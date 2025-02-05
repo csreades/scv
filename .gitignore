@@ -2,3 +2,6 @@ src/visualizer/*.o
 src/visualizer/imgui.ini
 src/visualizer/visualizer
 
+/src/visualizer/.vs
+src/visualizer/scvVisualizer.vcxproj.user
+/src/visualizer/Debug
