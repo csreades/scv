@@ -169,7 +169,7 @@ void backgroundRenderCallback(const ImDrawList* parent_list, const ImDrawCmd* cm
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     plan.calculateMoves();
     plan.calculateSchedules();
-    saveTrajectoryToFile("periodic.txt");
+    //saveTrajectoryToFile("periodic.txt");
     std::chrono::steady_clock::time_point t1 =   std::chrono::steady_clock::now();
 
     // update the moving average
