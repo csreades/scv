@@ -24,6 +24,10 @@ using namespace scv;
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+
 GLFWwindow* window;
 
 Camera camera;      // handles a FPS game style input (WASD, left shift, left ctrl)
@@ -548,6 +552,141 @@ void loadTestCase_malformed() {
     plan.resetTraverse();
 }
 
+void saveTrajectoryToFile(const std::string& filename);
+void loadTestCase_file(const std::filesystem::path filename)
+{
+
+    //auto filename = std::filesystem::absolute(Reffilename); // Convert to absolute path
+    plan.clear();
+    //plan.setPositionLimits(0, 0, 0, 10, 10, 7);
+    std::ifstream file(filename);
+    if (!file)
+    {
+        printf("Failed to open GCode file: %s\n", filename.string().c_str());
+        return;
+    }
+    scv::move m;
+    m.vel = 100; //this is the current feed rate
+    m.acc = 1000;
+    m.jerk = 1000000000;
+    m.blendType = CBT_MIN_JERK;
+
+    m.src = vec3(0, 0, 0);
+    m.dst = vec3(0, 0, 0);  plan.appendMove(m);
+    bool newMove = false;
+    bool isMove = false;
+    std::string line;
+    size_t moveCount = 0;
+    vec3 newPos = vec3_zero;
+    while (std::getline(file, line))
+    {
+        std::istringstream iss(line);
+        std::string token;
+
+        while (iss >> token)
+        {
+            if (token[0] == 'G')
+            {
+                if (token == "G0")
+                    isMove = true;
+                if (token == "G1")
+                    isMove = true;
+            }
+            if (token[0] == 'X')
+            {
+                newPos.x = std::stof(token.substr(1));
+                newMove = true;
+            }
+            else if (token[0] == 'Y')
+            {
+                newPos.y = std::stof(token.substr(1));
+                newMove = true;
+            }
+            else if (token[0] == 'Z')
+            {
+                newPos.z = std::stof(token.substr(1));
+                newMove = true;
+            }
+            else if (token[0] == 'E')
+            {
+                //this is the extruded amount
+                //m.extrudeLength = std::stof(token.substr(1));
+                newMove = true;
+            }
+            else if (token[0] == 'F')
+            {
+                //This is the feed rate
+                m.vel = std::stof(token.substr(1));
+            }
+        }
+
+        if (newMove && isMove)
+        {
+            m.dst = newPos;
+            plan.appendMove(m);
+            //printf("Move Aded");
+            moveCount++;
+        }
+        newMove = false;
+        isMove = false;
+        //m.extrudeLength = 0;
+
+        printf("Move count %d\n", moveCount);
+        if (moveCount == 1000)
+        {
+            break;
+        }
+
+    }
+
+    file.close();
+
+    plan.calculateMoves();
+    plan.resetTraverse();
+    saveTrajectoryToFile("output.txt");
+}
+
+
+bool trajectorySaved = false;
+void saveTrajectoryToFile(const std::string& filename)
+{
+    std::ofstream file(filename);
+    if (!file.is_open())
+    {
+        printf("Error: Could not open file %s for writing!\n", filename.c_str());
+        return;
+    }
+
+    file << "Time,X,Y,Z\E\n"; // CSV header
+
+    scv_float t = 0;
+    int count = 0;
+    vec3 v, a, j;
+    vec3 p;
+    scv_float e = 0;
+    int segmentIndex;
+
+    while (true)
+    {
+        bool stillOnPath = false;
+        if (plan.blendMethod == CBM_INTERPOLATED_MOVES)
+            stillOnPath = plan.getTrajectoryState_interpolatedMoves(t, &segmentIndex, &p, &v, &a, &j);
+        else
+            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j);
+
+        // Write to file
+        file << t << "\t" << p.x << "\t" << p.y << "\t" << p.z << "\t" << e << "\n";
+
+        t += 0.002; // Keep in sync with rendering step
+
+        if (!stillOnPath)
+            break;
+    }
+
+    file.close();
+    printf("Trajectory saved to %s\n", filename.c_str());
+}
+
 void loadTestCase_pnp() {
     plan.clear();
     plan.setPositionLimits(0, 0, -40,  400, 480, 0);
@@ -792,9 +931,15 @@ int main(int, char**)
                     doRandomizePoints = false;
                     loadTestCase_retrace();
                 } ImGui::SameLine();
-                if (ImGui::Button("Malformed")) {
+                if (ImGui::Button("Malformed"))
+                {
                     doRandomizePoints = false;
                     loadTestCase_malformed();
+                } ImGui::SameLine();
+                if (ImGui::Button("GCode"))
+                {
+                    auto gcodeFile = std::filesystem::path("UM3E_3DBenchy.gcode");
+                    loadTestCase_file(gcodeFile);
                 } ImGui::SameLine();
                 if (ImGui::Button("PNP")) {
                     doRandomizePoints = false;
