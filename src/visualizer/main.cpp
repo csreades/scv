@@ -556,6 +556,12 @@ void saveTrajectoryToFile(const std::string& filename);
 void loadTestCase_file(const std::filesystem::path filename)
 {
 
+    plan.setPositionLimits(0, 0, 0, 200, 200, 100);
+    plan.setVelocityLimits(2000, 500, 50);
+    plan.setAccelerationLimits(5000, 1000, 150);
+    plan.setJerkLimits(10000, 10000, 10000);
+
+
     //auto filename = std::filesystem::absolute(Reffilename); // Convert to absolute path
     plan.clear();
     //plan.setPositionLimits(0, 0, 0, 10, 10, 7);
@@ -566,10 +572,10 @@ void loadTestCase_file(const std::filesystem::path filename)
         return;
     }
     scv::move m;
-    m.vel = 100; //this is the current feed rate
-    m.acc = 1000;
+    m.vel = 10000; //this is the current feed rate
+    m.acc = 100000;
     m.jerk = 1000000000;
-    m.blendType = CBT_MIN_JERK;
+    m.blendType = CBT_MAX_JERK;
 
     m.src = vec3(0, 0, 0);
     m.dst = vec3(0, 0, 0);  plan.appendMove(m);
@@ -616,7 +622,7 @@ void loadTestCase_file(const std::filesystem::path filename)
             else if (token[0] == 'F')
             {
                 //This is the feed rate
-                m.vel = std::stof(token.substr(1));
+                //m.vel = std::stof(token.substr(1));
             }
         }
 
