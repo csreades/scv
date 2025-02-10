@@ -1,3 +1,8 @@
+# This fork
+This fork intends to allow for G-code loading (basic currently) and output of CSP files (time discretised positions). Further extension for scaling a scaler along the path (controlling laser power / extrusion).
+
+
+
 # S-curve trajectory calculator
 
 This code calculates a jerk limited path in 3D with blended corners. The path is initially formed by joining a sequence of points with straight line moves, each a 7-segment "s-curve". Global limits on velocity, acceleration and jerk can be specified for each axis, and each move can be given an individual limit on velocity, acceleration and jerk.
