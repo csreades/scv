@@ -562,9 +562,9 @@ void loadTestCase_file(const std::filesystem::path filename)
 {
 
     plan.setPositionLimits(0, 0, 0, 200, 200, 100);
-    plan.setVelocityLimits(2000, 500, 50);
-    plan.setAccelerationLimits(5000, 1000, 150);
-    plan.setJerkLimits(10000, 10000, 10000);
+    plan.setVelocityLimits(250, 35, 35);
+    plan.setAccelerationLimits(1000, 25, 25);
+    plan.setJerkLimits(100000, 10000, 10000);
 
 
     //auto filename = std::filesystem::absolute(Reffilename); // Convert to absolute path
@@ -577,8 +577,8 @@ void loadTestCase_file(const std::filesystem::path filename)
         return;
     }
     scv::move m;
-    m.vel = 10000; //this is the current feed rate
-    m.acc = 100000;
+    m.vel = 1000000000; //this is the current feed rate
+    m.acc = 1000000000;
     m.jerk = 1000000000;
     m.blendType = CBT_MAX_JERK;
     m.scaler = 0;
@@ -681,6 +681,7 @@ void saveTrajectoryToFile(const std::string& filename)
     vec3 p;
     scv_float e = 0, e_old = 0;
     int segmentIndex, old_segmentIndex = 0;
+    int mOwner, sConsec = 0;
 
     while (true)
     {
@@ -688,7 +689,7 @@ void saveTrajectoryToFile(const std::string& filename)
         if (plan.blendMethod == CBM_INTERPOLATED_MOVES)
             stillOnPath = plan.getTrajectoryState_interpolatedMoves(t, &segmentIndex, &p, &v, &a, &j);
         else
-            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j, &e);
+            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j, &e, 0.002,  &mOwner, &sConsec);
 
         if (old_segmentIndex != segmentIndex)
         {
@@ -697,7 +698,7 @@ void saveTrajectoryToFile(const std::string& filename)
         }
 
         if(segmentIndex >= 0)
-            file << segmentIndex << "\t" << t << "\t" << p.x << "\t" << p.y << "\t" << p.z << "\t" << e << "\n";
+            file << segmentIndex << "\t" << t << "\t" << p.x << "\t" << p.y << "\t" << p.z << "\t" << e << "\t" << mOwner << "\t" << sConsec << "\n";
 
         e_old = e;
         t += 0.002; // Keep in sync with rendering step

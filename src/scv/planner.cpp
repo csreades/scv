@@ -431,7 +431,19 @@ void planner::getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec
     *vel = s.vel + (t * s.acc) + ((t * t) / (scv_float)2.0) * s.jerk;
     *acc = s.acc + t * s.jerk;
     *jerk = s.jerk;
-    *scaler = s.scaler + s.scaler_rate * t;
+
+    if (s.scaler != 0)
+    {
+        auto dist = (s.pos + (t * s.vel) + ((t * t) / (scv_float)2.0) * s.acc + ((t * t * t) / (scv_float)6.0) * s.jerk);
+        dist = dist - s.startPos;
+        auto totalDist = s.endPos - s.startPos;
+        *scaler = s.scaler_start + (s.scaler * dist.Length() / totalDist.Length());
+     }
+    else
+    {
+        *scaler = 0;
+    }
+    //*scaler = s.scaler + s.scaler_rate * t;
 }
 
 void getSegmentPosition(segment& s, scv_float t, scv::vec3* pos )
@@ -439,7 +451,7 @@ void getSegmentPosition(segment& s, scv_float t, scv::vec3* pos )
     *pos = s.pos + (t * s.vel) + ((t * t) / (scv_float)2.0) * s.acc + ((t * t * t) / (scv_float)6.0) * s.jerk;
 }
 
-bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst)
+bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst, int* mOwner, int* sconse)
 {
     // no segments, return zero vectors
     if ( segments.empty() ) {
@@ -468,7 +480,11 @@ bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentI
         scv_float endT = totalT + s.duration;
         if ( t >= totalT && t < endT ) {
             getSegmentState(s, t - totalT, pos, vel, acc, jerk, scaler);
-            
+            if (mOwner)
+            {
+                *mOwner = segments[segmentInd].moveOwner;
+                *sconse = segments[segmentInd].consecutiveNumber;
+            }
             /*if (s.duration > tconst)
                 *scaler = *scaler * tconst / s.duration;
             else
@@ -1186,56 +1202,11 @@ void planner::appendMove(move &m)
 void planner::collateSegments()
 {
     segments.clear();
+    tagScalars();
 
-    auto scalerTotal = 0;
-    for (size_t i = 0; i < moves.size(); i++) {
+    for (size_t i = 0; i < moves.size(); i++)
+    {
         move& m = moves[i];
-        auto moveScaler = m.scaler;
-        auto moveTotalTime = m.duration;
-
-        auto totalDistance = (m.dst - m.src).Length();
-        auto start = m.src;
-        for (size_t k = 0; k < m.segments.size(); k++)
-        {
-            if (k == 0)
-            {
-                m.segments[0].scaler = scalerTotal;
-            }
-            vec3 end;
-            //iterate over the segments, look for start location determine distance duration
-            if (k != (m.segments.size() - 1))
-            {
-                end = m.segments[k + 1].pos;
-            }
-            else
-            {
-                end = m.dst;
-            }
-            //we end at the start of the next
-            auto segmentDistance = (end - start).Length();
-            if (totalDistance > 0 && segmentDistance > 0)
-            {
-                auto frac = segmentDistance / totalDistance;
-                auto scalerFraction = frac * m.scaler; //the total amount distributed in this segment
-                auto scalerRate = scalerFraction / m.segments[k].duration; //rate at which created
-                m.segments[k].scaler_rate = scalerRate;
-                if (k != (m.segments.size() - 1))
-                {
-                    m.segments[k + 1].scaler = scalerFraction + m.segments[k].scaler;
-                    scalerTotal = m.segments[k + 1].scaler;
-                }
-            }
-            else
-            {
-                if (k != (m.segments.size() - 1))
-                {
-                    m.segments[k + 1].scaler = m.segments[k].scaler;
-                    scalerTotal = m.segments[k + 1].scaler;
-                }
-            }
-            start = end;
-
-        }   
         for (size_t k = 0; k < m.segments.size(); k++)
         {
             segment& s = m.segments[k];
@@ -1245,7 +1216,87 @@ void planner::collateSegments()
             }
         }
     }
+
+    calculateScalars();
+
 }
+
+
+
+void planner::calculateScalars()
+{
+    for (size_t i = 0; i < segments.size() - 1; i++)
+    {
+        auto endPos = segments[i].endPos;
+        auto curPos = segments[i].pos;
+        if (segments[i].duration > 0.0)
+        {
+            if (endPos == curPos)
+            {
+                auto m = moves[segments[i].moveOwner + 1];
+                auto m_old = moves[segments[i].moveOwner];
+                segments[i].endPos = m.dst;
+                segments[i].startPos = m.src;
+                segments[i].scaler_start = m_old.scaler;
+            }
+        }
+    }
+    for (size_t i = 0; i < segments.size() - 1; i++)
+    {
+
+        auto endPos = segments[i].endPos;
+        auto curPos = segments[i].pos;
+        if (segments[i].duration > 0.0)
+        {
+            if (endPos == curPos)
+            {
+                auto m = moves[segments[i].moveOwner + 1];
+                auto m_old = moves[segments[i].moveOwner];
+                segments[i].endPos = m.dst;
+                segments[i].startPos = m.src;
+                segments[i].scaler_start = m_old.scaler;
+            }
+        }
+    }
+    /*
+    auto prev_seg = segments[0];
+    for (size_t i = 1; i < segments.size() - 1; i++)
+    {
+        if ((prev_seg.consecutiveNumber + 1) != segments[i].consecutiveNumber)
+        {
+            for (size_t j = i; j < segments.size() - 1; j++)
+            {
+                auto m_old = moves[segments[j-1].moveOwner];
+                segments[j].scaler_start = m_old.scaler;
+            }
+        }
+        prev_seg = segments[i];
+    }
+    */
+    return;
+}
+
+void planner::tagScalars()
+{
+    size_t id = 0;
+    auto scaler_start = 0;
+    for (size_t i = 0; i < moves.size(); i++)
+    {
+        move& m = moves[i];
+        for (size_t k = 0; k < m.segments.size(); k++)
+        {
+            m.segments[k].endPos = m.dst;
+            m.segments[k].startPos = m.src;
+            m.segments[k].scaler = m.scaler - scaler_start;
+            m.segments[k].scaler_start = scaler_start;
+            m.segments[k].consecutiveNumber = id++;
+            m.segments[k].moveOwner = i;
+        }
+        scaler_start = m.scaler;
+    }
+    return;
+}
+
 
 void planner::setPositionLimits(scv_float lx, scv_float ly, scv_float lz, scv_float ux, scv_float uy, scv_float uz)
 {

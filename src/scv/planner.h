@@ -15,9 +15,13 @@ namespace scv {
         vec3 jerk;
         scv_float duration;
         scv_float scaler = 0; //the location at start of segment
-        scv_float scaler_rate = 0; //the rate at which the scaler inscerases
+        scv_float scaler_start = 0; //the location at start of segment
+        vec3 endPos;
+        vec3 startPos;
 
         bool toDelete;
+        size_t consecutiveNumber;
+        size_t moveOwner;
 
         segment() {
             toDelete = false;
@@ -92,6 +96,8 @@ namespace scv {
         void calculateSchedules();
         void blendCorner(move& m0, move& m1, bool isFirst, bool isLast);
         void collateSegments();
+        void calculateScalars();
+        void tagScalars();
         void planner::getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler);
         //void getSegmentPosition(segment& s, double t, scv::vec3* pos);
         std::vector<segment>& getSegments();
@@ -117,7 +123,7 @@ namespace scv {
 
         void appendMove( move& l );
         bool calculateMoves();
-        bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst = 0.002);
+        bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst = 0.002, int* mOwner = 0, int* sconse = 0);
         bool getTrajectoryState_interpolatedMoves(scv_float time, int *segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk );
 
         scv_float getTraverseTime();
