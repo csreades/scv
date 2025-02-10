@@ -37,6 +37,9 @@ planner plan;       // the S-curve planner we're testing
   #define M_PI 3.14159265358979323846
 #endif
 
+
+void saveTrajectoryToFile(const std::string& filename);
+
 // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
 void my_gluPerspective(float fovY, float aspect, float zNear, float zFar)
 {
@@ -154,6 +157,7 @@ bool violation(vec3& p, vec3& j, vec3& dp, vec3& dv, vec3& da) {
 // This function will be called during ImGui's rendering, while drawing the background.
 // Draw all our stuff here so the GUI windows will then be over the top of it. Need to
 // re-enable scissor test after we're done.
+
 void backgroundRenderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
 
     IM_UNUSED(parent_list);
@@ -165,6 +169,7 @@ void backgroundRenderCallback(const ImDrawList* parent_list, const ImDrawCmd* cm
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     plan.calculateMoves();
     plan.calculateSchedules();
+    saveTrajectoryToFile("periodic.txt");
     std::chrono::steady_clock::time_point t1 =   std::chrono::steady_clock::now();
 
     // update the moving average
@@ -227,6 +232,7 @@ void backgroundRenderCallback(const ImDrawList* parent_list, const ImDrawCmd* cm
     scv_float t = 0;
     int count = 0;
     int segmentIndex;
+    scv_float e;
     while ( true ) {
 
         if ( t > 0.7 ) {
@@ -238,7 +244,7 @@ void backgroundRenderCallback(const ImDrawList* parent_list, const ImDrawCmd* cm
         if ( plan.blendMethod == CBM_INTERPOLATED_MOVES )
             stillOnPath = plan.getTrajectoryState_interpolatedMoves(t, &segmentIndex, &p, &v, &a, &j);
         else
-            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j);
+            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j, &e);
 
         vec3 dp = p - lp;
         vec3 dv = v - lv;
@@ -552,7 +558,6 @@ void loadTestCase_malformed() {
     plan.resetTraverse();
 }
 
-void saveTrajectoryToFile(const std::string& filename);
 void loadTestCase_file(const std::filesystem::path filename)
 {
 
@@ -576,7 +581,7 @@ void loadTestCase_file(const std::filesystem::path filename)
     m.acc = 100000;
     m.jerk = 1000000000;
     m.blendType = CBT_MAX_JERK;
-
+    m.scaler = 0;
     m.src = vec3(0, 0, 0);
     m.dst = vec3(0, 0, 0);  plan.appendMove(m);
     bool newMove = false;
@@ -598,31 +603,34 @@ void loadTestCase_file(const std::filesystem::path filename)
                 if (token == "G1")
                     isMove = true;
             }
-            if (token[0] == 'X')
+            if (isMove)
             {
-                newPos.x = std::stof(token.substr(1));
-                newMove = true;
-            }
-            else if (token[0] == 'Y')
-            {
-                newPos.y = std::stof(token.substr(1));
-                newMove = true;
-            }
-            else if (token[0] == 'Z')
-            {
-                newPos.z = std::stof(token.substr(1));
-                newMove = true;
-            }
-            else if (token[0] == 'E')
-            {
-                //this is the extruded amount
-                //m.extrudeLength = std::stof(token.substr(1));
-                newMove = true;
-            }
-            else if (token[0] == 'F')
-            {
-                //This is the feed rate
-                //m.vel = std::stof(token.substr(1));
+                if (token[0] == 'X')
+                {
+                    newPos.x = std::stof(token.substr(1));
+                    newMove = true;
+                }
+                else if (token[0] == 'Y')
+                {
+                    newPos.y = std::stof(token.substr(1));
+                    newMove = true;
+                }
+                else if (token[0] == 'Z')
+                {
+                    newPos.z = std::stof(token.substr(1));
+                    newMove = true;
+                }
+                else if (token[0] == 'E')
+                {
+                    //this is the extruded amount
+                    m.scaler = std::stof(token.substr(1));
+                    newMove = true;
+                }
+                else if (token[0] == 'F')
+                {
+                    //This is the feed rate
+                    m.vel = std::stof(token.substr(1));
+                }
             }
         }
 
@@ -635,6 +643,7 @@ void loadTestCase_file(const std::filesystem::path filename)
         }
         newMove = false;
         isMove = false;
+        //m.scaler = 0;
         //m.extrudeLength = 0;
 
         printf("Move count %d\n", moveCount);
@@ -654,6 +663,7 @@ void loadTestCase_file(const std::filesystem::path filename)
 
 
 bool trajectorySaved = false;
+
 void saveTrajectoryToFile(const std::string& filename)
 {
     std::ofstream file(filename);
@@ -663,14 +673,14 @@ void saveTrajectoryToFile(const std::string& filename)
         return;
     }
 
-    file << "Time,X,Y,Z\E\n"; // CSV header
+    file << "Time,X,Y,Z,E\n"; // CSV header
 
     scv_float t = 0;
     int count = 0;
     vec3 v, a, j;
     vec3 p;
-    scv_float e = 0;
-    int segmentIndex;
+    scv_float e = 0, e_old = 0;
+    int segmentIndex, old_segmentIndex = 0;
 
     while (true)
     {
@@ -678,11 +688,18 @@ void saveTrajectoryToFile(const std::string& filename)
         if (plan.blendMethod == CBM_INTERPOLATED_MOVES)
             stillOnPath = plan.getTrajectoryState_interpolatedMoves(t, &segmentIndex, &p, &v, &a, &j);
         else
-            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j);
+            stillOnPath = plan.getTrajectoryState_constantJerkSegments(t, &segmentIndex, &p, &v, &a, &j, &e);
 
-        // Write to file
-        file << t << "\t" << p.x << "\t" << p.y << "\t" << p.z << "\t" << e << "\n";
+        if (old_segmentIndex != segmentIndex)
+        {
+            old_segmentIndex = segmentIndex;
+            //e_old = 0;
+        }
 
+        if(segmentIndex >= 0)
+            file << segmentIndex << "\t" << t << "\t" << p.x << "\t" << p.y << "\t" << p.z << "\t" << e << "\n";
+
+        e_old = e;
         t += 0.002; // Keep in sync with rendering step
 
         if (!stillOnPath)

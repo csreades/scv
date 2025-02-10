@@ -14,6 +14,8 @@ namespace scv {
         vec3 acc;
         vec3 jerk;
         scv_float duration;
+        scv_float scaler = 0; //the location at start of segment
+        scv_float scaler_rate = 0; //the rate at which the scaler inscerases
 
         bool toDelete;
 
@@ -47,6 +49,9 @@ namespace scv {
         scv_float blendClearance;
 
         std::vector<segment> segments;
+
+
+        scv_float scaler = 0;
 
         scv_float duration;
         scv_float scheduledTime;
@@ -87,7 +92,7 @@ namespace scv {
         void calculateSchedules();
         void blendCorner(move& m0, move& m1, bool isFirst, bool isLast);
         void collateSegments();
-        void getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec3* acc, vec3* jerk );
+        void planner::getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler);
         //void getSegmentPosition(segment& s, double t, scv::vec3* pos);
         std::vector<segment>& getSegments();
 
@@ -112,7 +117,7 @@ namespace scv {
 
         void appendMove( move& l );
         bool calculateMoves();
-        bool getTrajectoryState_constantJerkSegments(scv_float time, int *segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk );
+        bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst = 0.002);
         bool getTrajectoryState_interpolatedMoves(scv_float time, int *segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk );
 
         scv_float getTraverseTime();

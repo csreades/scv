@@ -425,12 +425,13 @@ void planner::calculateSchedules() {
 
 }
 
-void planner::getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec3* acc, vec3* jerk )
+void planner::getSegmentState(segment& s, scv_float t, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float *scaler)
 {
     *pos = s.pos + (t * s.vel) + ((t * t) / (scv_float)2.0) * s.acc + ((t * t * t) / (scv_float)6.0) * s.jerk;
     *vel = s.vel + (t * s.acc) + ((t * t) / (scv_float)2.0) * s.jerk;
     *acc = s.acc + t * s.jerk;
     *jerk = s.jerk;
+    *scaler = s.scaler + s.scaler_rate * t;
 }
 
 void getSegmentPosition(segment& s, scv_float t, scv::vec3* pos )
@@ -438,7 +439,7 @@ void getSegmentPosition(segment& s, scv_float t, scv::vec3* pos )
     *pos = s.pos + (t * s.vel) + ((t * t) / (scv_float)2.0) * s.acc + ((t * t * t) / (scv_float)6.0) * s.jerk;
 }
 
-bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int *segmentIndex, vec3 *pos, vec3 *vel, vec3 *acc, vec3 *jerk)
+bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int* segmentIndex, vec3* pos, vec3* vel, vec3* acc, vec3* jerk, scv_float* scaler, scv_float tconst)
 {
     // no segments, return zero vectors
     if ( segments.empty() ) {
@@ -466,7 +467,12 @@ bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int *segmentI
         segment& s = segments[segmentInd];
         scv_float endT = totalT + s.duration;
         if ( t >= totalT && t < endT ) {
-            getSegmentState(s, t - totalT, pos, vel, acc, jerk);
+            getSegmentState(s, t - totalT, pos, vel, acc, jerk, scaler);
+            
+            /*if (s.duration > tconst)
+                *scaler = *scaler * tconst / s.duration;
+            else
+                printf("goddam");*/
             return true;
         }
         segmentInd++;
@@ -475,7 +481,7 @@ bool planner::getTrajectoryState_constantJerkSegments(scv_float t, int *segmentI
 
     // time exceeds total time of trajectory, return end point
     scv::segment& lastSegment = segments[segments.size()-1];
-    getSegmentState(lastSegment, lastSegment.duration, pos, vel, acc, jerk);
+    getSegmentState(lastSegment, lastSegment.duration, pos, vel, acc, jerk, scaler);
     return false;
 }
 
@@ -1181,12 +1187,62 @@ void planner::collateSegments()
 {
     segments.clear();
 
+    auto scalerTotal = 0;
     for (size_t i = 0; i < moves.size(); i++) {
         move& m = moves[i];
-        for (size_t k = 0; k < m.segments.size(); k++) {
+        auto moveScaler = m.scaler;
+        auto moveTotalTime = m.duration;
+
+        auto totalDistance = (m.dst - m.src).Length();
+        auto start = m.src;
+        for (size_t k = 0; k < m.segments.size(); k++)
+        {
+            if (k == 0)
+            {
+                m.segments[0].scaler = scalerTotal;
+            }
+            vec3 end;
+            //iterate over the segments, look for start location determine distance duration
+            if (k != (m.segments.size() - 1))
+            {
+                end = m.segments[k + 1].pos;
+            }
+            else
+            {
+                end = m.dst;
+            }
+            //we end at the start of the next
+            auto segmentDistance = (end - start).Length();
+            if (totalDistance > 0 && segmentDistance > 0)
+            {
+                auto frac = segmentDistance / totalDistance;
+                auto scalerFraction = frac * m.scaler; //the total amount distributed in this segment
+                auto scalerRate = scalerFraction / m.segments[k].duration; //rate at which created
+                m.segments[k].scaler_rate = scalerRate;
+                if (k != (m.segments.size() - 1))
+                {
+                    m.segments[k + 1].scaler = scalerFraction + m.segments[k].scaler;
+                    scalerTotal = m.segments[k + 1].scaler;
+                }
+            }
+            else
+            {
+                if (k != (m.segments.size() - 1))
+                {
+                    m.segments[k + 1].scaler = m.segments[k].scaler;
+                    scalerTotal = m.segments[k + 1].scaler;
+                }
+            }
+            start = end;
+
+        }   
+        for (size_t k = 0; k < m.segments.size(); k++)
+        {
             segment& s = m.segments[k];
-            if ( s.duration >0 )
+            if (s.duration > 0)
+            {
                 segments.push_back(s);
+            }
         }
     }
 }
